@@ -9,7 +9,6 @@ import Signin from "./components/Signin/Signin";
 import Register from "./components/Register/Register";
 import 'tachyons'
 import Particles from "react-particles-js";
-import Clarifai from 'clarifai'
 
 const particlesOptions = {
     particles: {
@@ -23,21 +22,38 @@ const particlesOptions = {
     }
 }
 
-const app = new Clarifai.App({
-    apiKey: '50a6748fbba24e288be4a0caffae62f6'
-});
+const initialState = {
+    input: '',
+    imageUrl: '',
+    box: {},
+    route: 'signin',
+    isSignedIn: false,
+    user: {
+        id: '',
+        name: '',
+        email: '',
+        entries: 0,
+        joined: ''
+    }
+}
 
 class App extends Component {
-    constructor() {
-        super();
-        this.state = {
-            input: '',
-            imageUrl: '',
-            box: {},
-            route: 'signin',
-            isSignedIn: false
-        }
+    constructor(props) {
+        super(props);
+        this.state = initialState
     }
+
+    loadUser = (date) => {
+        this.setState({
+            user: {
+                id: date.id,
+                name: date.name,
+                email: date.email,
+                entries: date.entries,
+                joined: date.joined
+            }
+        })
+    };
 
     calculateFaceLocation = (data) => {
         const clarifaiFace = data.outputs[0].data.regions[0].region_info.bounding_box
@@ -54,23 +70,42 @@ class App extends Component {
     };
 
     displayFaceBox = (box) => {
-        console.log(box)
-        this.setState({box: box})
-
+        this.setState({box})
     };
 
     onInputChange = (event) => {
         this.setState({input: event.target.value});
-        console.log(event.target.value)
+        // console.log(event.target.value)
     };
 
     onButtonSubmit = () => {
         // any prop inside of setState method should use this.state.prop
         this.setState({imageUrl: this.state.input});
-        app.models.predict(Clarifai.FACE_DETECT_MODEL,
-            //if below changes to : this.state.imageUrl will be an error
-            this.state.input)
-            .then((response) => {
+        fetch('http://localhost:3001/imageurl', {
+            method: 'post',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                input: this.state.input
+            })
+        })
+            .then(response => response.json())
+            .then(response => {
+                    if (response) {
+                        fetch('http://localhost:3001/image', {
+                            method: 'put',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                id: this.state.user.id
+                            })
+                        })
+                            .then(response => response.json())
+                            // Below count is the response(result) of this fetch, which is equals
+                            // to server.js put request result
+                            .then(count => {
+                                this.setState(Object.assign(this.state.user, {entries: count}))
+                                // console.log(this.state.user.entries)
+                            }).catch(console.log)
+                    }
                     // do something with response
                     // console.log(response.outputs[0].data.regions[0].region_info.bounding_box)
                     this.displayFaceBox(this.calculateFaceLocation(response))
@@ -82,10 +117,12 @@ class App extends Component {
     // the route is changed, so the showing components will be changed.
     onRouteChange = (route) => {
         if (route === 'signout') {
-            this.setState({isSignedIn: false})
+            // if below bracket's content is {isSignedIn: false}, then we only set the
+            // isSignedIn to false, but still kept last user's info, in order to clear
+            // last user's info, has to be update the whole state
+            this.setState(initialState)
         } else if (route === 'home') {
-            this.setState({isSignedIn: true}
-            )
+            this.setState({isSignedIn: true})
         }
         this.setState({route: route})
     };
@@ -119,7 +156,9 @@ class App extends Component {
                     ?
                     <div>
                         <Logo/>
-                        <Rank/>
+                        <Rank name={this.state.user.name}
+                              entries={this.state.user.entries}
+                        />
                         <ImageLinkForm
                             onInputChange={this.onInputChange}
                             onButtonSubmit={this.onButtonSubmit}
@@ -132,9 +171,13 @@ class App extends Component {
                     : (
                         route === 'signin'
                             ?
-                            <Signin onRouteChange={this.onRouteChange}/>
+                            <Signin
+                                loadUser={this.loadUser}
+                                onRouteChange={this.onRouteChange}/>
                             :
-                            <Register onRouteChange={this.onRouteChange}/>
+                            <Register
+                                loadUser={this.loadUser}
+                                onRouteChange={this.onRouteChange}/>
                     )
                 }
             </div>
